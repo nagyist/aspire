@@ -2,24 +2,28 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
-using Aspire.Dashboard.Extensions;
+using System.Xml.Linq;
+using Aspire.Dashboard.Components.Layout;
 using Aspire.Dashboard.Components.Resize;
+using Aspire.Dashboard.Components.ResourcesGridColumns;
+using Aspire.Dashboard.Extensions;
 using Aspire.Dashboard.Model;
 using Aspire.Dashboard.Otlp.Model;
 using Aspire.Dashboard.Otlp.Storage;
 using Aspire.Dashboard.Resources;
 using Aspire.Dashboard.Utils;
 using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using Microsoft.FluentUI.AspNetCore.Components;
+using Microsoft.FluentUI.AspNetCore.Components.Extensions;
 using Microsoft.JSInterop;
 
 namespace Aspire.Dashboard.Components.Pages;
 
-public partial class Resources : ComponentBase, IAsyncDisposable
+public partial class Resources : ComponentBase, IAsyncDisposable, IPageWithSessionAndUrlState<Resources.ResourcesViewModel, Resources.ResourcesPageState>
 {
     private Subscription? _logsSubscription;
     private Dictionary<OtlpApplication, int>? _applicationUnviewedErrorCounts;
@@ -39,7 +43,15 @@ public partial class Resources : ComponentBase, IAsyncDisposable
     [Inject]
     public required IJSRuntime JS { get; init; }
     [Inject]
-    public required ProtectedSessionStorage SessionStorage { get; init; }
+    public required ISessionStorage SessionStorage { get; init; }
+
+    public string BasePath => DashboardUrls.ResourcesBasePath;
+    public string SessionStorageKey => "Resources_PageState";
+    public ResourcesViewModel PageViewModel { get; set; } = null!;
+
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "view")]
+    public string? ViewKindName { get; set; }
 
     [CascadingParameter]
     public required ViewportInformation ViewportInformation { get; init; }
@@ -59,10 +71,13 @@ public partial class Resources : ComponentBase, IAsyncDisposable
     private Task? _resourceSubscriptionTask;
     private bool _isLoading = true;
     private string? _elementIdBeforeDetailsViewOpened;
+    private DotNetObjectReference<ResourcesInterop>? _resourcesInteropReference;
+    private IJSObjectReference? _jsModule;
+    private AspirePageContentLayout? _contentLayout;
 
     private bool Filter(ResourceViewModel resource) => _visibleResourceTypes.ContainsKey(resource.ResourceType) && (_filter.Length == 0 || resource.MatchesFilter(_filter)) && !resource.IsHiddenState();
 
-    private Task OnResourceTypeVisibilityChangedAsync(string resourceType, bool isVisible)
+    protected async Task OnResourceTypeVisibilityChangedAsync(string resourceType, bool isVisible)
     {
         if (isVisible)
         {
@@ -73,12 +88,14 @@ public partial class Resources : ComponentBase, IAsyncDisposable
             _visibleResourceTypes.TryRemove(resourceType, out _);
         }
 
-        return ClearSelectedResourceAsync();
+        await UpdateResourceGraphResourcesAsync();
+        await ClearSelectedResourceAsync();
     }
 
-    private Task HandleSearchFilterChangedAsync()
+    private async Task HandleSearchFilterChangedAsync()
     {
-        return ClearSelectedResourceAsync();
+        await UpdateResourceGraphResourcesAsync();
+        await ClearSelectedResourceAsync();
     }
 
     private bool? AreAllTypesVisible
@@ -122,6 +139,8 @@ public partial class Resources : ComponentBase, IAsyncDisposable
                 _visibleResourceTypes.Clear();
             }
 
+            _ = UpdateResourceGraphResourcesAsync();
+
             StateHasChanged();
         }
     }
@@ -136,6 +155,11 @@ public partial class Resources : ComponentBase, IAsyncDisposable
 
     protected override async Task OnInitializedAsync()
     {
+        PageViewModel = new ResourcesViewModel
+        {
+            SelectedViewKind = ResourceViewKind.Table
+        };
+
         _applicationUnviewedErrorCounts = TelemetryRepository.GetApplicationUnviewedErrorLogsCount();
 
         if (DashboardClient.IsEnabled)
@@ -199,10 +223,164 @@ public partial class Resources : ComponentBase, IAsyncDisposable
                         }
                     }
 
+                    await UpdateResourceGraphResourcesAsync();
                     await InvokeAsync(StateHasChanged);
                 }
             });
         }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (PageViewModel.SelectedViewKind == ResourceViewKind.Graph && _jsModule == null)
+        {
+            _jsModule = await JS.InvokeAsync<IJSObjectReference>("import", "/js/app-resourcegraph.js");
+
+            _resourcesInteropReference = DotNetObjectReference.Create(new ResourcesInterop(this));
+
+            await _jsModule.InvokeVoidAsync("initializeResourcesGraph", _resourcesInteropReference);
+            await UpdateResourceGraphResourcesAsync();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await this.InitializeViewModelAsync();
+    }
+
+    private async Task UpdateResourceGraphResourcesAsync()
+    {
+        if (PageViewModel.SelectedViewKind != ResourceViewKind.Graph || _jsModule == null)
+        {
+            return;
+        }
+
+        var databaseIcon = GetIconPathData(new Icons.Filled.Size24.Database());
+        var containerIcon = GetIconPathData(new Icons.Filled.Size24.Box());
+        var executableIcon = GetIconPathData(new Icons.Filled.Size24.SettingsCogMultiple());
+        var projectIcon = GetIconPathData(new Icons.Filled.Size24.CodeCircle());
+
+        var activeResources = _resourceByName.Values.Where(Filter).OrderBy(e => e.ResourceType).ThenBy(e => e.Name).ToList();
+        var resources = activeResources.Select(MapDto).ToList();
+        await _jsModule.InvokeVoidAsync("updateResourcesGraph", resources);
+
+        ResourceDto MapDto(ResourceViewModel r)
+        {
+            var referencedNames = new List<string>();
+            if (r.Environment.SingleOrDefault(e => e.Name == "hack_resource_references") is { } references)
+            {
+                referencedNames = references.Value!.Split(',').ToList();
+            }
+
+            var resolvedNames = new List<string>();
+            for (var i = 0; i < referencedNames.Count; i++)
+            {
+                var name = referencedNames[i];
+                foreach (var targetResource in activeResources.Where(r => string.Equals(r.DisplayName, name, StringComparisons.ResourceName)))
+                {
+                    resolvedNames.Add(targetResource.Name);
+                }
+            }
+
+            var endpoint = GetDisplayedEndpoints(r, out _).FirstOrDefault();
+            var resolvedEndpointText = ResolvedEndpointText(endpoint);
+            var resourceName = ResourceViewModel.GetResourceName(r, _resourceByName);
+            var color = ColorGenerator.Instance.GetColorHexByKey(resourceName);
+
+            var icon = r.ResourceType switch
+            {
+                KnownResourceTypes.Executable => executableIcon,
+                KnownResourceTypes.Project => projectIcon,
+                KnownResourceTypes.Container => containerIcon,
+                string t => t.Contains("database", StringComparison.OrdinalIgnoreCase) ? databaseIcon : executableIcon
+            };
+
+            var stateIcon = StateColumnDisplay.GetStateIcon(r, ColumnsLoc);
+
+            var dto = new ResourceDto
+            {
+                Name = r.Name,
+                ResourceType = r.ResourceType,
+                DisplayName = ResourceViewModel.GetResourceName(r, _resourceByName),
+                Uid = r.Uid,
+                ResourceIcon = new IconDto
+                {
+                    Path = icon,
+                    Color = color,
+                    Tooltip = r.ResourceType
+                },
+                StateIcon = new IconDto
+                {
+                    Path = GetIconPathData(stateIcon.Icon),
+                    Color = stateIcon.Color.ToAttributeValue()!,
+                    Tooltip = stateIcon.Tooltip ?? r.State
+                },
+                ReferencedNames = resolvedNames.ToImmutableArray(),
+                EndpointUrl = endpoint?.Url,
+                EndpointText = resolvedEndpointText
+            };
+
+            return dto;
+        }
+    }
+
+    private static string ResolvedEndpointText(DisplayedEndpoint? endpoint)
+    {
+        var text = endpoint?.Text ?? endpoint?.Url;
+        if (string.IsNullOrEmpty(text))
+        {
+            return "No endpoints";
+        }
+
+        if (Uri.TryCreate(text, UriKind.Absolute, out var uri))
+        {
+            return $"{uri.Host}:{uri.Port}";
+        }
+
+        return text;
+    }
+
+    private static string GetIconPathData(Icon icon)
+    {
+        var p = icon.Content;
+        var e = XElement.Parse(p);
+        return e.Attribute("d")!.Value;
+    }
+
+    private class ResourcesInterop(Resources resources)
+    {
+        [JSInvokable]
+        public async Task SelectResource(string id)
+        {
+            if (resources._resourceByName.TryGetValue(id, out var resource))
+            {
+                await resources.InvokeAsync(async () =>
+                {
+                    await resources.ShowResourceDetailsAsync(resource, null!);
+                    resources.StateHasChanged();
+                });
+            }
+        }
+    }
+
+    private class ResourceDto
+    {
+        public required string Name { get; init; }
+        public required string ResourceType { get; init; }
+        public required string DisplayName { get; init; }
+        public required string Uid { get; init; }
+        public required IconDto ResourceIcon { get; init; }
+        public required IconDto StateIcon { get; init; }
+        public required string? EndpointUrl { get; init; }
+        public required string? EndpointText { get; init; }
+        public required ImmutableArray<string> ReferencedNames { get; init; }
+    }
+
+    private class IconDto
+    {
+        public required string Path { get; init; }
+        public required string Color { get; init; }
+        public required string? Tooltip { get; init; }
     }
 
     private bool ApplicationErrorCountsChanged(Dictionary<OtlpApplication, int> newApplicationUnviewedErrorCounts)
@@ -242,6 +420,11 @@ public partial class Resources : ComponentBase, IAsyncDisposable
         SelectedResource = null;
 
         await InvokeAsync(StateHasChanged);
+
+        if (PageViewModel.SelectedViewKind == ResourceViewKind.Graph)
+        {
+            await UpdateResourceGraphSelectedAsync();
+        }
 
         if (_elementIdBeforeDetailsViewOpened is not null && causedByUserAction)
         {
@@ -382,12 +565,86 @@ public partial class Resources : ComponentBase, IAsyncDisposable
         return ResourceEndpointHelpers.GetEndpoints(resource, includeInternalUrls: false);
     }
 
+    private Task OnTabChangeAsync(FluentTab newTab)
+    {
+        var id = newTab.Id?.Substring("tab-".Length);
+
+        if (id is null
+            || !Enum.TryParse(typeof(ResourceViewKind), id, out var o)
+            || o is not ResourceViewKind viewKind)
+        {
+            return Task.CompletedTask;
+        }
+
+        return OnViewChangedAsync(viewKind);
+    }
+
+    private async Task OnViewChangedAsync(ResourceViewKind newView)
+    {
+        PageViewModel.SelectedViewKind = newView;
+        await this.AfterViewModelChangedAsync(_contentLayout, isChangeInToolbar: true);
+
+        if (newView == ResourceViewKind.Graph)
+        {
+            await UpdateResourceGraphResourcesAsync();
+            await UpdateResourceGraphSelectedAsync();
+        }
+    }
+
+    private async Task UpdateResourceGraphSelectedAsync()
+    {
+        if (_jsModule != null)
+        {
+            await _jsModule.InvokeVoidAsync("updateResourcesGraphSelected", SelectedResource?.Name);
+        }
+    }
+
+    public sealed class ResourcesViewModel
+    {
+        public required ResourceViewKind SelectedViewKind { get; set; }
+    }
+
+    public class ResourcesPageState
+    {
+        public required string? ViewKind { get; set; }
+    }
+
+    public enum ResourceViewKind
+    {
+        Table,
+        Graph
+    }
+
     public async ValueTask DisposeAsync()
     {
+        _resourcesInteropReference?.Dispose();
         _watchTaskCancellationTokenSource.Cancel();
         _watchTaskCancellationTokenSource.Dispose();
         _logsSubscription?.Dispose();
 
+        await JSInteropHelpers.SafeDisposeAsync(_jsModule);
+
         await TaskHelpers.WaitIgnoreCancelAsync(_resourceSubscriptionTask);
+    }
+
+    public void UpdateViewModelFromQuery(ResourcesViewModel viewModel)
+    {
+        if (Enum.TryParse(typeof(ResourceViewKind), ViewKindName, out var view) && view is ResourceViewKind vk)
+        {
+            viewModel.SelectedViewKind = vk;
+        }
+    }
+
+    public string GetUrlFromSerializableViewModel(ResourcesPageState serializable)
+    {
+        return DashboardUrls.ResourcesUrl(view: serializable.ViewKind);
+    }
+
+    public ResourcesPageState ConvertViewModelToSerializable()
+    {
+        return new ResourcesPageState
+        {
+            ViewKind = (PageViewModel.SelectedViewKind != ResourceViewKind.Table) ? PageViewModel.SelectedViewKind.ToString() : null
+        };
     }
 }

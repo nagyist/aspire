@@ -90,6 +90,7 @@ public static class RedisBuilderExtensions
             });
 
             configureContainer?.Invoke(resourceBuilder);
+            ResourceBuilderExtensions.AddReferenceEnvVar(resourceBuilder, builder.Resource.Name);
 
             return builder;
         }

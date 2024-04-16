@@ -16,7 +16,7 @@
 }
 
 <div class="page-content-container">
-    <AspirePageContentLayout IsSummaryDetailsViewOpen="@showDetailsView">
+    <AspirePageContentLayout @ref="@_contentLayout" IsSummaryDetailsViewOpen="@showDetailsView">
         <PageTitleSection>
             <h1 class="page-header">@Loc[nameof(Dashboard.Resources.Resources.ResourcesHeader)]</h1>
         </PageTitleSection>
@@ -70,72 +70,99 @@
                                 SelectedValue="@SelectedResource"
                                 ViewKey="ResourcesList">
                 <Summary>
-                    @{
-                        var gridTemplateColumns = HasResourcesWithCommands ? "1fr 1.5fr 1.25fr 1.5fr 2.5fr 2.5fr 1fr 1fr 1fr" : "1fr 1.5fr 1.25fr 1.5fr 2.5fr 2.5fr 1fr 1fr";
-                    }
-                    <FluentDataGrid Virtualize="true"
-                                    GenerateHeader="GenerateHeaderOption.Sticky"
-                                    ItemSize="46"
-                                    Items="@FilteredResources"
-                                    ResizableColumns="true"
-                                    GridTemplateColumns="@gridTemplateColumns"
-                                    RowClass="GetRowClass"
-                                    Loading="_isLoading"
-                                    ShowHover="true"
-                                    TGridItem="ResourceViewModel"
-                                    OnRowClick="@(r => r.ExecuteOnDefault(d => ShowResourceDetailsAsync(d, buttonId: null)))"
-                                    Class="enable-row-click">
-                        <ChildContent>
-                            <PropertyColumn Title="@Loc[nameof(Dashboard.Resources.Resources.ResourcesTypeColumnHeader)]" Property="@(c => c.ResourceType)" Sortable="true" Tooltip="true" TooltipText="@(c => c.ResourceType)" />
-                            <TemplateColumn Title="@ControlsStringsLoc[nameof(ControlsStrings.NameColumnHeader)]" Sortable="true" SortBy="@_nameSort" Tooltip="true" TooltipText="@(c => GetResourceName(c))">
-                                <ResourceNameDisplay Resource="context" FilterText="@_filter" FormatName="GetResourceName" />
-                            </TemplateColumn>
-                            <TemplateColumn Title="@Loc[nameof(Dashboard.Resources.Resources.ResourcesStateColumnHeader)]" Sortable="true" SortBy="@_stateSort" Tooltip="true" TooltipText="@(c => c.State.Humanize())">
-                                <StateColumnDisplay Resource="@context" UnviewedErrorCounts="@_applicationUnviewedErrorCounts" />
-                            </TemplateColumn>
-                            <TemplateColumn Title="@Loc[nameof(Dashboard.Resources.Resources.ResourcesStartTimeColumnHeader)]" Sortable="true" SortBy="@_startTimeSort" TooltipText="@(context => context.CreationTimeStamp != null ? FormatHelpers.FormatDateTime(TimeProvider, context.CreationTimeStamp.Value, MillisecondsDisplay.None, CultureInfo.CurrentCulture) : null)" Tooltip="true">
-                                <StartTimeColumnDisplay Resource="@context" />
-                            </TemplateColumn>
-                            <TemplateColumn Title="@Loc[nameof(Dashboard.Resources.Resources.ResourcesSourceColumnHeader)]" Tooltip="true" TooltipText="@(ctx => GetSourceColumnValueAndTooltip(ctx)?.Tooltip)">
-                                @if (GetSourceColumnValueAndTooltip(context) is { } columnDisplay)
-                                {
-                                    <SourceColumnDisplay Resource="context" FilterText="@_filter" Value="@columnDisplay.Value" ContentAfterValue="@columnDisplay.ContentAfterValue" ValueToCopy="@columnDisplay.ValueToCopy" Tooltip="@columnDisplay.Tooltip" />
-                                }
-                            </TemplateColumn>
-                            <TemplateColumn Title="@Loc[nameof(Dashboard.Resources.Resources.ResourcesEndpointsColumnHeader)]" Tooltip="true" TooltipText="@(ctx => GetEndpointsTooltip(ctx))">
-                                <EndpointsColumnDisplay Resource="context"
-                                                        HasMultipleReplicas="HasMultipleReplicas(context)"
-                                                        DisplayedEndpoints="@GetDisplayedEndpoints(context, out var additionalMessage)"
-                                                        AdditionalMessage="@additionalMessage" />
-                            </TemplateColumn>
-                            <TemplateColumn Title="@Loc[nameof(Dashboard.Resources.Resources.ResourcesLogsColumnHeader)]" Class="no-ellipsis">
-                                <FluentAnchor Appearance="Appearance.Lightweight" Href="@DashboardUrls.ConsoleLogsUrl(resource: context.Name)" @onclick:stopPropagation="true">@ControlsStringsLoc[ControlsStrings.ViewAction]</FluentAnchor>
-                            </TemplateColumn>
-                            <TemplateColumn Title="@Loc[nameof(Dashboard.Resources.Resources.ResourcesDetailsColumnHeader)]" Sortable="false" Class="no-ellipsis">
+                    <div class="resources-summary-layout">
+                        <div class="resource-tabs">
+                            @*
+                                Tab content isn't nested inside FluentTab elements. The tab control is just used to display the tabs.
+                                Content is located in manually created divs so they can be placed in their own CSS grid row.
+                            *@
+                            <FluentTabs Class="resources-tab-header" ActiveTabId="@($"tab-{PageViewModel.SelectedViewKind}")" OnTabChange="@OnTabChangeAsync">
+                                <FluentTab LabelClass="tab-label"
+                                           Id="@($"tab-{ResourceViewKind.Table}")"
+                                           Label="@ControlsStringsLoc[nameof(ControlsStrings.ChartContainerTableTab)]"
+                                           Icon="@(new Icons.Regular.Size24.Table())">
+                                </FluentTab>
+                                <FluentTab LabelClass="tab-label"
+                                           Id="@($"tab-{ResourceViewKind.Graph}")"
+                                           aria-label="@ControlsStringsLoc[nameof(ControlsStrings.ChartContainerGraphAccessibleLabel)]"
+                                           Label="@ControlsStringsLoc[nameof(ControlsStrings.ChartContainerGraphTab)]"
+                                           Icon="@(new Icons.Regular.Size24.ShareAndroid())">
+                                </FluentTab>
+                            </FluentTabs>
+                            <div class="resources-grid-container" hidden="@(PageViewModel.SelectedViewKind != ResourceViewKind.Table)">
                                 @{
-                                    var id = $"details-button-{context.Uid}";
+                                    var gridTemplateColumns = HasResourcesWithCommands ? "1fr 1.5fr 1.25fr 1.5fr 2.5fr 2.5fr 1fr 1fr 1fr" : "1fr 1.5fr 1.25fr 1.5fr 2.5fr 2.5fr 1fr 1fr";
                                 }
-                                <div @onclick:stopPropagation="true">
-                                    <FluentButton Appearance="Appearance.Lightweight"
-                                                  Id="@id"
-                                                  Title="@ControlsStringsLoc[nameof(ControlsStrings.ViewAction)]"
-                                                  OnClick="@(() => ShowResourceDetailsAsync(context, id))">@ControlsStringsLoc[nameof(ControlsStrings.ViewAction)]</FluentButton>
-                                </div>
-                            </TemplateColumn>
-                            @if (HasResourcesWithCommands)
-                            {
-                                <TemplateColumn Title="@Loc[nameof(Dashboard.Resources.Resources.ResourcesCommandsColumnHeader)]">
-                                    <div @onclick:stopPropagation="true">
-                                        <ResourceCommands Commands="@context.Commands"
-                                                          CommandSelected="async (command) => await ExecuteResourceCommandAsync(context, command)" />
-                                    </div>
-                                </TemplateColumn>
-                            }
-                        </ChildContent>
-                        <EmptyContent>
-                            <FluentIcon Icon="Icons.Regular.Size24.AppGeneric" />&nbsp;@Loc[nameof(Dashboard.Resources.Resources.ResourcesNoResources)]
-                        </EmptyContent>
-                    </FluentDataGrid>
+                                <FluentDataGrid Virtualize="true"
+                                                GenerateHeader="GenerateHeaderOption.Sticky"
+                                                ItemSize="46"
+                                                Items="@FilteredResources"
+                                                ResizableColumns="true"
+                                                GridTemplateColumns="@gridTemplateColumns"
+                                                RowClass="GetRowClass"
+                                                Loading="_isLoading"
+                                                ShowHover="true"
+                                                TGridItem="ResourceViewModel"
+                                                OnRowClick="@(r => r.ExecuteOnDefault(d => ShowResourceDetailsAsync(d, buttonId: null)))"
+                                                Class="enable-row-click">
+                                    <ChildContent>
+                                        <PropertyColumn Title="@Loc[nameof(Dashboard.Resources.Resources.ResourcesTypeColumnHeader)]" Property="@(c => c.ResourceType)" Sortable="true" Tooltip="true" TooltipText="@(c => c.ResourceType)" />
+                                        <TemplateColumn Title="@ControlsStringsLoc[nameof(ControlsStrings.NameColumnHeader)]" Sortable="true" SortBy="@_nameSort" Tooltip="true" TooltipText="@(c => GetResourceName(c))">
+                                            <ResourceNameDisplay Resource="context" FilterText="@_filter" FormatName="GetResourceName" />
+                                        </TemplateColumn>
+                                        <TemplateColumn Title="@Loc[nameof(Dashboard.Resources.Resources.ResourcesStateColumnHeader)]" Sortable="true" SortBy="@_stateSort" Tooltip="true" TooltipText="@(c => c.State.Humanize())">
+                                            <StateColumnDisplay Resource="@context" UnviewedErrorCounts="@_applicationUnviewedErrorCounts" />
+                                        </TemplateColumn>
+                                        <TemplateColumn Title="@Loc[nameof(Dashboard.Resources.Resources.ResourcesStartTimeColumnHeader)]" Sortable="true" SortBy="@_startTimeSort" TooltipText="@(context => context.CreationTimeStamp != null ? FormatHelpers.FormatDateTime(TimeProvider, context.CreationTimeStamp.Value, MillisecondsDisplay.None, CultureInfo.CurrentCulture) : null)" Tooltip="true">
+                                            <StartTimeColumnDisplay Resource="@context" />
+                                        </TemplateColumn>
+                                        <TemplateColumn Title="@Loc[nameof(Dashboard.Resources.Resources.ResourcesSourceColumnHeader)]" Tooltip="true" TooltipText="@(ctx => GetSourceColumnValueAndTooltip(ctx)?.Tooltip)">
+                                            @if (GetSourceColumnValueAndTooltip(context) is { } columnDisplay)
+                                            {
+                                                <SourceColumnDisplay Resource="context" FilterText="@_filter" Value="@columnDisplay.Value" ContentAfterValue="@columnDisplay.ContentAfterValue" ValueToCopy="@columnDisplay.ValueToCopy" Tooltip="@columnDisplay.Tooltip" />
+                                            }
+                                        </TemplateColumn>
+                                        <TemplateColumn Title="@Loc[nameof(Dashboard.Resources.Resources.ResourcesEndpointsColumnHeader)]" Tooltip="true" TooltipText="@(ctx => GetEndpointsTooltip(ctx))">
+                                            <EndpointsColumnDisplay Resource="context"
+                                                                    HasMultipleReplicas="HasMultipleReplicas(context)"
+                                                                    DisplayedEndpoints="@GetDisplayedEndpoints(context, out var additionalMessage)"
+                                                                    AdditionalMessage="@additionalMessage" />
+                                        </TemplateColumn>
+                                        <TemplateColumn Title="@Loc[nameof(Dashboard.Resources.Resources.ResourcesLogsColumnHeader)]" Class="no-ellipsis">
+                                            <FluentAnchor Appearance="Appearance.Lightweight" Href="@DashboardUrls.ConsoleLogsUrl(resource: context.Name)" @onclick:stopPropagation="true">@ControlsStringsLoc[ControlsStrings.ViewAction]</FluentAnchor>
+                                        </TemplateColumn>
+                                        <TemplateColumn Title="@Loc[nameof(Dashboard.Resources.Resources.ResourcesDetailsColumnHeader)]" Sortable="false" Class="no-ellipsis">
+                                            @{
+                                                var id = $"details-button-{context.Uid}";
+                                            }
+                                            <div @onclick:stopPropagation="true">
+                                                <FluentButton Appearance="Appearance.Lightweight"
+                                                              Id="@id"
+                                                              Title="@ControlsStringsLoc[nameof(ControlsStrings.ViewAction)]"
+                                                              OnClick="@(() => ShowResourceDetailsAsync(context, id))">@ControlsStringsLoc[nameof(ControlsStrings.ViewAction)]</FluentButton>
+                                            </div>
+                                        </TemplateColumn>
+                                        @if (HasResourcesWithCommands)
+                                        {
+                                            <TemplateColumn Title="@Loc[nameof(Dashboard.Resources.Resources.ResourcesCommandsColumnHeader)]">
+                                                <div @onclick:stopPropagation="true">
+                                                    <ResourceCommands Commands="@context.Commands"
+                                                                      CommandSelected="async (command) => await ExecuteResourceCommandAsync(context, command)" />
+                                                </div>
+                                            </TemplateColumn>
+                                        }
+                                    </ChildContent>
+                                    <EmptyContent>
+                                        <FluentIcon Icon="Icons.Regular.Size24.AppGeneric" />&nbsp;@Loc[nameof(Dashboard.Resources.Resources.ResourcesNoResources)]
+                                    </EmptyContent>
+                                </FluentDataGrid>
+                            </div>
+                            <div class="resource-graph-container" hidden="@(PageViewModel.SelectedViewKind != ResourceViewKind.Graph)">
+                                <svg class="resource-graph">
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
                 </Summary>
                 <Details>
                     <ResourceDetails Resource="context" ShowSpecOnlyToggle="true" />
