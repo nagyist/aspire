@@ -17,7 +17,7 @@
 }
 
 <div class="page-content-container">
-    <AspirePageContentLayout IsSummaryDetailsViewOpen="@showDetailsView">
+    <AspirePageContentLayout @ref="@_contentLayout" IsSummaryDetailsViewOpen="@showDetailsView">
         <PageTitleSection>
             <h1 class="page-header">@Loc[nameof(Dashboard.Resources.Resources.ResourcesHeader)]</h1>
         </PageTitleSection>
@@ -73,6 +73,26 @@
                                 ViewKey="ResourcesList"
                                 OnResize="@(r => _manager.SetWidthFraction(r.Orientation == Orientation.Horizontal ? r.Panel1Fraction : 1))">
                 <Summary>
+                    <div class="resources-summary-layout">
+                        <div class="resource-tabs">
+                            @*
+                                Tab content isn't nested inside FluentTab elements. The tab control is just used to display the tabs.
+                                Content is located in manually created divs so they can be placed in their own CSS grid row.
+                            *@
+                            <FluentTabs Class="resources-tab-header" ActiveTabId="@($"tab-{PageViewModel.SelectedViewKind}")" OnTabChange="@OnTabChangeAsync">
+                                <FluentTab LabelClass="tab-label"
+                                           Id="@($"tab-{ResourceViewKind.Table}")"
+                                           Label="@ControlsStringsLoc[nameof(ControlsStrings.ChartContainerTableTab)]"
+                                           Icon="@(new Icons.Regular.Size24.Table())">
+                                </FluentTab>
+                                <FluentTab LabelClass="tab-label"
+                                           Id="@($"tab-{ResourceViewKind.Graph}")"
+                                           aria-label="@ControlsStringsLoc[nameof(ControlsStrings.ChartContainerGraphAccessibleLabel)]"
+                                           Label="@ControlsStringsLoc[nameof(ControlsStrings.ChartContainerGraphTab)]"
+                                           Icon="@(new Icons.Regular.Size24.ShareAndroid())">
+                                </FluentTab>
+                            </FluentTabs>
+                            <div class="resources-grid-container" hidden="@(PageViewModel.SelectedViewKind != ResourceViewKind.Table)">
                     <GridColumnManager @ref="_manager" Columns="@_gridColumns">
                         <FluentDataGrid @ref="_dataGrid"
                                         ResizeLabel="@AspireFluentDataGridHeaderCell.GetResizeLabel(ControlsStringsLoc)"
@@ -145,6 +165,13 @@
                             </EmptyContent>
                         </FluentDataGrid>
                     </GridColumnManager>
+                            </div>
+                            <div class="resource-graph-container" hidden="@(PageViewModel.SelectedViewKind != ResourceViewKind.Graph)">
+                                <svg class="resource-graph">
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
                 </Summary>
                 <Details>
                     <ResourceDetails Resource="context" ResourceByName="_resourceByName" ShowSpecOnlyToggle="true" />
