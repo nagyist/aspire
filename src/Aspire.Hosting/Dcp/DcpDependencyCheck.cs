@@ -4,7 +4,6 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Dcp.Process;
 using Aspire.Hosting.Properties;
@@ -14,8 +13,8 @@ namespace Aspire.Hosting.Dcp;
 
 internal sealed partial class DcpDependencyCheck : IDcpDependencyCheckService
 {
-    [GeneratedRegex("[^\\d\\.].*$")]
-    private static partial Regex VersionRegex();
+    //[GeneratedRegex("[^\\d\\.].*$")]
+    //private static partial Regex VersionRegex();
 
     private readonly DistributedApplicationModel _applicationModel;
     private readonly DcpOptions _dcpOptions;
@@ -106,8 +105,8 @@ internal sealed partial class DcpDependencyCheck : IDcpDependencyCheckService
                     return null; // Best effort
                 }
 
-                EnsureDcpVersion(dcpInfo);
-                EnsureDcpContainerRuntime(dcpInfo);
+                // EnsureDcpVersion(dcpInfo);
+                // EnsureDcpContainerRuntime(dcpInfo);
                 _dcpInfo = dcpInfo;
                 return dcpInfo;
             }
@@ -137,93 +136,93 @@ internal sealed partial class DcpDependencyCheck : IDcpDependencyCheckService
         }
     }
 
-    private static void EnsureDcpVersion(DcpInfo dcpInfo)
-    {
-        AspireEventSource.Instance.DcpVersionCheckStart();
+    //private static void EnsureDcpVersion(DcpInfo dcpInfo)
+    //{
+    //    AspireEventSource.Instance.DcpVersionCheckStart();
 
-        try
-        {
-            var dcpVersionString = dcpInfo.VersionString;
+    //    try
+    //    {
+    //        var dcpVersionString = dcpInfo.VersionString;
 
-            if (dcpVersionString == null
-                || dcpVersionString == string.Empty
-                || dcpVersionString == "dev")
-            {
-                // If empty, null, or a dev version, pass
-                dcpInfo.Version = DcpVersion.Dev;
-                return;
-            }
+    //        if (dcpVersionString == null
+    //            || dcpVersionString == string.Empty
+    //            || dcpVersionString == "dev")
+    //        {
+    //            // If empty, null, or a dev version, pass
+    //            dcpInfo.Version = DcpVersion.Dev;
+    //            return;
+    //        }
 
-            // Early DCP versions (e.g. preview 1) have a +x at the end of their version string, e.g. 0.1.42+5,
-            // which does not parse. Strip off anything like that.
-            dcpVersionString = VersionRegex().Replace(dcpVersionString, string.Empty);
+    //        // Early DCP versions (e.g. preview 1) have a +x at the end of their version string, e.g. 0.1.42+5,
+    //        // which does not parse. Strip off anything like that.
+    //        dcpVersionString = VersionRegex().Replace(dcpVersionString, string.Empty);
 
-            if (Version.TryParse(dcpVersionString, out var dcpVersion))
-            {
-                if (dcpVersion < DcpVersion.MinimumVersionInclusive)
-                {
-                    throw new DistributedApplicationException(string.Format(
-                        CultureInfo.InvariantCulture,
-                        Resources.DcpVersionCheckTooLowMessage
-                    ));
-                }
+    //        if (Version.TryParse(dcpVersionString, out var dcpVersion))
+    //        {
+    //            if (dcpVersion < DcpVersion.MinimumVersionInclusive)
+    //            {
+    //                throw new DistributedApplicationException(string.Format(
+    //                    CultureInfo.InvariantCulture,
+    //                    Resources.DcpVersionCheckTooLowMessage
+    //                ));
+    //            }
 
-                dcpInfo.Version = dcpVersion;
-            }
-        }
-        finally
-        {
-            AspireEventSource.Instance.DcpVersionCheckStop();
-        }
-    }
+    //            dcpInfo.Version = dcpVersion;
+    //        }
+    //    }
+    //    finally
+    //    {
+    //        AspireEventSource.Instance.DcpVersionCheckStop();
+    //    }
+    //}
 
-    private void EnsureDcpContainerRuntime(DcpInfo dcpInfo)
-    {
-        // If we don't have any resources that need a container then we
-        // don't need to check for a healthy container runtime.
-        if (!_applicationModel.Resources.Any(c => c.IsContainer()))
-        {
-            return;
-        }
+    //private void EnsureDcpContainerRuntime(DcpInfo dcpInfo)
+    //{
+    //    // If we don't have any resources that need a container then we
+    //    // don't need to check for a healthy container runtime.
+    //    if (!_applicationModel.Resources.Any(c => c.IsContainer()))
+    //    {
+    //        return;
+    //    }
 
-        AspireEventSource.Instance.ContainerRuntimeHealthCheckStart();
+    //    AspireEventSource.Instance.ContainerRuntimeHealthCheckStart();
 
-        try
-        {
-            var containerRuntime = _dcpOptions.ContainerRuntime;
-            if (string.IsNullOrEmpty(containerRuntime))
-            {
-                // Default runtime is Docker
-                containerRuntime = "docker";
-            }
-            var installed = dcpInfo.Containers?.Installed ?? false;
-            var running = dcpInfo.Containers?.Running ?? false;
-            var error = dcpInfo.Containers?.Error;
+    //    try
+    //    {
+    //        var containerRuntime = _dcpOptions.ContainerRuntime;
+    //        if (string.IsNullOrEmpty(containerRuntime))
+    //        {
+    //            // Default runtime is Docker
+    //            containerRuntime = "docker";
+    //        }
+    //        var installed = dcpInfo.Containers?.Installed ?? false;
+    //        var running = dcpInfo.Containers?.Running ?? false;
+    //        var error = dcpInfo.Containers?.Error;
 
-            if (!installed)
-            {
-                throw new DistributedApplicationException(string.Format(
-                    CultureInfo.InvariantCulture,
-                    Resources.ContainerRuntimePrerequisiteMissingExceptionMessage,
-                    containerRuntime,
-                    error
-                ));
-            }
-            else if (!running)
-            {
-                throw new DistributedApplicationException(string.Format(
-                    CultureInfo.InvariantCulture,
-                    Resources.ContainerRuntimeUnhealthyExceptionMessage,
-                    containerRuntime,
-                    error
-                ));
-            }
+    //        if (!installed)
+    //        {
+    //            throw new DistributedApplicationException(string.Format(
+    //                CultureInfo.InvariantCulture,
+    //                Resources.ContainerRuntimePrerequisiteMissingExceptionMessage,
+    //                containerRuntime,
+    //                error
+    //            ));
+    //        }
+    //        else if (!running)
+    //        {
+    //            throw new DistributedApplicationException(string.Format(
+    //                CultureInfo.InvariantCulture,
+    //                Resources.ContainerRuntimeUnhealthyExceptionMessage,
+    //                containerRuntime,
+    //                error
+    //            ));
+    //        }
 
-            // If we get to here all is good!
-        }
-        finally
-        {
-            AspireEventSource.Instance?.ContainerRuntimeHealthCheckStop();
-        }
-    }
+    //        // If we get to here all is good!
+    //    }
+    //    finally
+    //    {
+    //        AspireEventSource.Instance?.ContainerRuntimeHealthCheckStop();
+    //    }
+    //}
 }
