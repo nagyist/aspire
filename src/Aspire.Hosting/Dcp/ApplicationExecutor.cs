@@ -1066,6 +1066,11 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
                 throw new InvalidOperationException("A project resource is missing required metadata"); // Should never happen.
             }
 
+            //while (!Debugger.IsAttached)
+            //{
+            //    Thread.Sleep(1000);
+            //}
+
             EnsureRequiredAnnotations(project);
 
             var replicas = project.GetReplicaCount();

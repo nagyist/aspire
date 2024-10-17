@@ -259,6 +259,8 @@ internal sealed class DashboardLifecycleHook(IConfiguration configuration,
                 distributedApplicationLogger.LogInformation("Now listening on: {DashboardUrl}", firstDashboardUrl.ToString().TrimEnd('/'));
             }
 
+            Console.WriteLine($"The token is {browserToken}");
+
             if (!string.IsNullOrEmpty(browserToken))
             {
                 LoggingHelpers.WriteDashboardUrl(distributedApplicationLogger, dashboardUrls, browserToken, isContainer: false);
