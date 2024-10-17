@@ -31,28 +31,34 @@ public partial class StateColumnDisplay
     /// <remarks>
     /// This is a static method so it can be called at the level of the parent column.
     /// </remarks>
-    public static string? GetResourceStateTooltip(ResourceViewModel resource, IStringLocalizer<Columns> Loc)
+    public static string? GetResourceStateTooltip(ResourceViewModel resource, IStringLocalizer<Columns> loc)
     {
         if (resource.IsStopped())
         {
             if (resource.TryGetExitCode(out var exitCode) && exitCode is not 0)
             {
                 // Process completed unexpectedly, hence the non-zero code. This is almost certainly an error, so warn users.
-                return string.Format(CultureInfo.CurrentCulture, Loc[Columns.StateColumnResourceExitedUnexpectedly], resource.ResourceType, exitCode);
+                return string.Format(CultureInfo.CurrentCulture, loc[Columns.StateColumnResourceExitedUnexpectedly], resource.ResourceType, exitCode);
             }
             else
             {
                 // Process completed, which may not have been unexpected.
-                return string.Format(CultureInfo.CurrentCulture, Loc[Columns.StateColumnResourceExited], resource.ResourceType);
+                return string.Format(CultureInfo.CurrentCulture, loc[Columns.StateColumnResourceExited], resource.ResourceType);
             }
         }
         else if (resource.KnownState is KnownResourceState.Running && resource.HealthStatus is not HealthStatus.Healthy)
         {
             // Resource is running but not healthy (initializing).
-            return Loc[nameof(Columns.RunningAndUnhealthyResourceStateToolTip)];
+            return loc[nameof(Columns.RunningAndUnhealthyResourceStateToolTip)];
+        }
+        else if (resource.IsRuntimeUnhealthy() && resource.IsContainer())
+        {
+            // DCP reports the container runtime is unhealthy. Most likely the container runtime (e.g. Docker) isn't running.
+            return loc[nameof(Columns.StateColumnResourceContainerRuntimeUnhealthy)];
         }
 
-        return null;
+        // Fallback to text displayed in column.
+        return GetStateText(resource, loc);
     }
 
     /// <summary>
@@ -91,6 +97,11 @@ public partial class StateColumnDisplay
             icon = new Icons.Filled.Size16.CircleHint(); // A dashed, hollow circle.
             color = Color.Info;
         }
+        else if (Resource.IsRuntimeUnhealthy())
+        {
+            icon = new Icons.Filled.Size16.Warning();
+            color = Color.Info;
+        }
         else if (Resource.HasNoState())
         {
             icon = new Icons.Filled.Size16.Circle();
@@ -118,14 +129,19 @@ public partial class StateColumnDisplay
             color = Color.Success;
         }
 
-        var text = Resource switch
-        {
-            { State: null or "" } => Loc[Columns.UnknownStateLabel],
-            { KnownState: KnownResourceState.Running, HealthStatus: not HealthStatus.Healthy } => $"{Resource.State.Humanize()} ({(Resource.HealthStatus ?? HealthStatus.Unhealthy).Humanize()})",
-            _ => Resource.State.Humanize()
-        };
+        var text = GetStateText(Resource, Loc);
 
         return new ResourceStateViewModel(text, icon, color);
+    }
+
+    private static string GetStateText(ResourceViewModel resource, IStringLocalizer<Columns> loc)
+    {
+        return resource switch
+        {
+            { State: null or "" } => loc[Columns.UnknownStateLabel],
+            { KnownState: KnownResourceState.Running, HealthStatus: not HealthStatus.Healthy } => $"{resource.State.Humanize()} ({(resource.HealthStatus ?? HealthStatus.Unhealthy).Humanize()})",
+            _ => resource.State.Humanize()
+        };
     }
 
     private record class ResourceStateViewModel(string Text, Icon Icon, Color Color);
