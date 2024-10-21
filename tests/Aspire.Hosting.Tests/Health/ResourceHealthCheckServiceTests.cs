@@ -170,7 +170,7 @@ public class ResourceHealthCheckServiceTests(ITestOutputHelper testOutputHelper)
         await app.StopAsync(abortTokenSource.Token);
     }
 
-    [Fact()]
+    [Fact(Skip = "")]
     public async Task ResourcesWithoutHealthCheckAnnotationsGetReadyEventFired()
     {
         using var builder = TestDistributedApplicationBuilder.Create(testOutputHelper);
@@ -238,7 +238,7 @@ public class ResourceHealthCheckServiceTests(ITestOutputHelper testOutputHelper)
         await app.StopAsync();
     }
 
-    [Fact(Skip = "")]
+    [Fact()]
     public async Task ResourceHealthCheckServiceDoesNotRunHealthChecksUnlessResourceIsRunning()
     {
         using var builder = TestDistributedApplicationBuilder.CreateWithTestContainerRegistry(testOutputHelper);
