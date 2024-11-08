@@ -5,12 +5,11 @@ using System.Globalization;
 using System.Text.Json.Nodes;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Lifecycle;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Aspire.Hosting.Codespaces;
 
-internal class CodespacesAutoUpdatePortForwardingHook(DistributedApplicationExecutionContext executionContext, IOptions<CodespacesOptions> options, ILogger<CodespacesAutoUpdatePortForwardingHook> logger) : IDistributedApplicationLifecycleHook
+internal class CodespacesAutoUpdatePortForwardingHook(DistributedApplicationExecutionContext executionContext, IOptions<CodespacesOptions> options) : IDistributedApplicationLifecycleHook
 {
     public async Task AfterEndpointsAllocatedAsync(DistributedApplicationModel appModel, CancellationToken cancellationToken = default)
     {
