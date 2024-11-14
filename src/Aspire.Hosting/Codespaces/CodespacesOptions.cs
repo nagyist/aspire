@@ -37,6 +37,18 @@ internal class CodespacesOptions
     /// </remarks>
     [MemberNotNullWhen(true, nameof(IsCodespace))]
     public string? CodespaceName { get; set; }
+
+    /// <summary>
+    /// When set contains an access token that can be used to call the GitHub API on behalf of the user.
+    /// </summary>
+    [MemberNotNullWhen(true, nameof(IsCodespace))]
+    public string? CodespaceToken { get; set; }
+
+    /// <summary>
+    /// When set contains the base URL for the GitHub API.
+    /// </summary>
+    [MemberNotNullWhen(true, nameof(IsCodespace))]
+    public string? ApiUrl { get; set; }
 }
 
 internal class ConfigureCodespacesOptions(IConfiguration configuration) : IConfigureOptions<CodespacesOptions>
@@ -44,6 +56,8 @@ internal class ConfigureCodespacesOptions(IConfiguration configuration) : IConfi
     private const string CodespacesEnvironmentVariable = "CODESPACES";
     private const string CodespaceNameEnvironmentVariable = "CODESPACE_NAME";
     private const string GitHubCodespacesPortForwardingDomain = "GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN";
+    private const string GitHubCodespaceToken = "GITHUB_TOKEN";
+    private const string GitHubApiUrl = "GITHUB_API_URL";
 
     private string GetRequiredCodespacesConfigurationValue(string key)
     {
@@ -62,5 +76,7 @@ internal class ConfigureCodespacesOptions(IConfiguration configuration) : IConfi
         options.IsCodespace = true;
         options.PortForwardingDomain = GetRequiredCodespacesConfigurationValue(GitHubCodespacesPortForwardingDomain);
         options.CodespaceName = GetRequiredCodespacesConfigurationValue(CodespaceNameEnvironmentVariable);
+        options.CodespaceToken = GetRequiredCodespacesConfigurationValue(GitHubCodespaceToken);
+        options.ApiUrl = GetRequiredCodespacesConfigurationValue(GitHubApiUrl);
     }
 }
