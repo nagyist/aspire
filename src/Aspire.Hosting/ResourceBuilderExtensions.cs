@@ -344,6 +344,7 @@ public static class ResourceBuilderExtensions
     public static IResourceBuilder<TDestination> WithReference<TDestination>(this IResourceBuilder<TDestination> builder, IResourceBuilder<IResourceWithConnectionString> source, string? connectionName = null, bool optional = false)
         where TDestination : IResourceWithEnvironment
     {
+        ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(source);
 
         var resource = source.Resource;
@@ -370,6 +371,7 @@ public static class ResourceBuilderExtensions
     public static IResourceBuilder<TDestination> WithReference<TDestination>(this IResourceBuilder<TDestination> builder, IResourceBuilder<IResourceWithServiceDiscovery> source)
         where TDestination : IResourceWithEnvironment
     {
+        ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(source);
 
         ApplyEndpoints(builder, source.Resource);
@@ -417,6 +419,7 @@ public static class ResourceBuilderExtensions
         where TDestination : IResourceWithEnvironment
     {
         ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(endpointReference);
 
         ApplyEndpoints(builder, endpointReference.Resource, endpointReference.EndpointName);
         return builder;

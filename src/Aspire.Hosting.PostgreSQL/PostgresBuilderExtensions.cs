@@ -118,9 +118,7 @@ public static class PostgresBuilderExtensions
 
         builder.Resource.AddDatabase(name, databaseName);
         var postgresDatabase = new PostgresDatabaseResource(name, databaseName, builder.Resource);
-        var databaseBuilder = builder.ApplicationBuilder.AddResource(postgresDatabase);
-
-        return databaseBuilder;
+        return builder.ApplicationBuilder.AddResource(postgresDatabase);
     }
 
     /// <summary>
