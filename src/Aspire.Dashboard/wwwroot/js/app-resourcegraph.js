@@ -201,12 +201,7 @@ class ResourceGraph {
             }
         });
 
-        // Identify nodes to keep (not in newResources) and merge them
-        const newResourceIds = newResources.map(resource => resource.name);
-        const nodesToKeep = existingNodes.filter(node => !newResourceIds.includes(node.id));
-
-        // Combine updated nodes with remaining ones
-        this.nodes = [...nodesToKeep, ...updatedNodes];
+        this.nodes = updatedNodes;
 
         function createIcon(resourceIcon) {
             return {
@@ -229,14 +224,18 @@ class ResourceGraph {
         for (var i = 0; i < newResources.length; i++) {
             var resource = newResources[i];
 
-            var resourceLinks = resource.referencedNames.map((referencedName, index) => {
-                return {
-                    id: `${referencedName}-${resource.name}`,
-                    target: referencedName,
-                    source: resource.name,
-                    strength: 0.7
-                };
-            });
+            var resourceLinks = resource.referencedNames
+                .filter((referencedName) => {
+                    return newResources.some(r => r.name === referencedName);
+                })
+                .map((referencedName, index) => {
+                    return {
+                        id: `${resource.name}-${referencedName}`,
+                        target: referencedName,
+                        source: resource.name,
+                        strength: 0.7
+                    };
+                });
 
             this.links.push(...resourceLinks);
         }
