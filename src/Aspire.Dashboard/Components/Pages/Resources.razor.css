@@ -161,3 +161,7 @@
     stroke-width: 2;
     marker-end: url(#arrow-highlight-expand);
 }
+
+::deep .tab-label > svg {
+    margin-right: calc(var(--design-unit) * 1px);
+}

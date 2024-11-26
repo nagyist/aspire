@@ -8,9 +8,9 @@ using System.Globalization;
 using System.Text;
 using System.Xml.Linq;
 using Aspire.Dashboard.Components.Layout;
-using Aspire.Dashboard.Components.ResourcesGridColumns;
 using Aspire.Dashboard.Extensions;
 using Aspire.Dashboard.Model;
+using Aspire.Dashboard.Otlp.Model;
 using Aspire.Dashboard.Otlp.Storage;
 using Aspire.Dashboard.Utils;
 using Microsoft.AspNetCore.Components;
@@ -48,7 +48,8 @@ public partial class Resources : ComponentBase, IAsyncDisposable, IPageWithSessi
     public required BrowserTimeProvider TimeProvider { get; init; }
     [Inject]
     public required IJSRuntime JS { get; init; }
-
+    [Inject]
+    public required ISessionStorage SessionStorage { get; init; }
 
     public string BasePath => DashboardUrls.ResourcesBasePath;
     public string SessionStorageKey => "Resources_PageState";
@@ -283,11 +284,6 @@ public partial class Resources : ComponentBase, IAsyncDisposable, IPageWithSessi
         }
     }
 
-    protected override async Task OnParametersSetAsync()
-    {
-        await this.InitializeViewModelAsync();
-    }
-
     private async Task UpdateResourceGraphResourcesAsync()
     {
         if (PageViewModel.SelectedViewKind != ResourceViewKind.Graph || _jsModule == null)
@@ -306,23 +302,22 @@ public partial class Resources : ComponentBase, IAsyncDisposable, IPageWithSessi
 
         ResourceDto MapDto(ResourceViewModel r)
         {
-            var referencedNames = new List<string>();
-            if (r.Environment.SingleOrDefault(e => e.Name == "hack_resource_references") is { } references)
-            {
-                referencedNames = references.Value!.Split(',').ToList();
-            }
-
             var resolvedNames = new List<string>();
-            for (var i = 0; i < referencedNames.Count; i++)
+
+            foreach (var resourceRelationships in r.Relationships.GroupBy(r => r.ResourceName, StringComparers.ResourceName))
             {
-                var name = referencedNames[i];
-                foreach (var targetResource in activeResources.Where(r => string.Equals(r.DisplayName, name, StringComparisons.ResourceName)))
+                var matches = _resourceByName.Values
+                    .Where(r => string.Equals(r.DisplayName, resourceRelationships.Key, StringComparisons.ResourceName))
+                    .Where(r => r.KnownState != KnownResourceState.Hidden)
+                    .ToList();
+
+                foreach (var match in matches)
                 {
-                    resolvedNames.Add(targetResource.Name);
+                    resolvedNames.Add(match.Name);
                 }
             }
 
-            var endpoint = GetDisplayedEndpoints(r, out _).FirstOrDefault();
+            var endpoint = GetDisplayedEndpoints(r).FirstOrDefault();
             var resolvedEndpointText = ResolvedEndpointText(endpoint);
             var resourceName = ResourceViewModel.GetResourceName(r, _resourceByName);
             var color = ColorGenerator.Instance.GetColorHexByKey(resourceName);
@@ -335,7 +330,7 @@ public partial class Resources : ComponentBase, IAsyncDisposable, IPageWithSessi
                 string t => t.Contains("database", StringComparison.OrdinalIgnoreCase) ? databaseIcon : executableIcon
             };
 
-            var stateIcon = StateColumnDisplay.GetStateIcon(r, ColumnsLoc);
+            var stateIcon = ResourceStateViewModel.GetStateViewModel(r, ColumnsLoc);
 
             var dto = new ResourceDto
             {
@@ -353,9 +348,9 @@ public partial class Resources : ComponentBase, IAsyncDisposable, IPageWithSessi
                 {
                     Path = GetIconPathData(stateIcon.Icon),
                     Color = stateIcon.Color.ToAttributeValue()!,
-                    Tooltip = stateIcon.Tooltip ?? r.State
+                    Tooltip = stateIcon.Text ?? r.State
                 },
-                ReferencedNames = resolvedNames.ToImmutableArray(),
+                ReferencedNames = resolvedNames.Distinct().OrderBy(n => n).ToImmutableArray(),
                 EndpointUrl = endpoint?.Url,
                 EndpointText = resolvedEndpointText
             };
@@ -470,6 +465,11 @@ public partial class Resources : ComponentBase, IAsyncDisposable, IPageWithSessi
 
     protected override async Task OnParametersSetAsync()
     {
+        if (await this.InitializeViewModelAsync())
+        {
+            return;
+        }
+
         if (ResourceName is not null)
         {
             if (_resourceByName.TryGetValue(ResourceName, out var selectedResource))
@@ -740,7 +740,7 @@ public partial class Resources : ComponentBase, IAsyncDisposable, IPageWithSessi
     private async Task OnViewChangedAsync(ResourceViewKind newView)
     {
         PageViewModel.SelectedViewKind = newView;
-        await this.AfterViewModelChangedAsync(_contentLayout, isChangeInToolbar: true);
+        await this.AfterViewModelChangedAsync(_contentLayout, waitToApplyMobileChange: true);
 
         if (newView == ResourceViewKind.Graph)
         {
@@ -785,12 +785,14 @@ public partial class Resources : ComponentBase, IAsyncDisposable, IPageWithSessi
         await TaskHelpers.WaitIgnoreCancelAsync(_resourceSubscriptionTask);
     }
 
-    public void UpdateViewModelFromQuery(ResourcesViewModel viewModel)
+    public Task UpdateViewModelFromQueryAsync(ResourcesViewModel viewModel)
     {
         if (Enum.TryParse(typeof(ResourceViewKind), ViewKindName, out var view) && view is ResourceViewKind vk)
         {
             viewModel.SelectedViewKind = vk;
         }
+
+        return Task.CompletedTask;
     }
 
     public string GetUrlFromSerializableViewModel(ResourcesPageState serializable)

@@ -21,8 +21,15 @@ internal class ResourceStateViewModel(string text, Icon icon, Color color)
     /// </summary>
     internal static ResourceStateViewModel GetStateViewModel(ResourceViewModel resource, IStringLocalizer<Columns> loc)
     {
-        // Browse the icon library at: https://aka.ms/fluentui-system-icons
+        var (icon, color) = GetStateIcon(resource);
+        var text = GetStateText(resource, loc);
 
+        return new ResourceStateViewModel(text, icon, color);
+    }
+
+    private static (Icon icon, Color color) GetStateIcon(ResourceViewModel resource)
+    {
+        // Browse the icon library at: https://aka.ms/fluentui-system-icons
         Icon icon;
         Color color;
 
@@ -84,9 +91,7 @@ internal class ResourceStateViewModel(string text, Icon icon, Color color)
             color = Color.Success;
         }
 
-        var text = GetStateText(resource, loc);
-
-        return new ResourceStateViewModel(text, icon, color);
+        return (icon, color);
     }
 
     /// <summary>

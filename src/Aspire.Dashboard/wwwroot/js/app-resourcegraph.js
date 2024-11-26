@@ -1,4 +1,4 @@
-import './d3.v7.min.js'
+import './d3.v7.js'
 
 let resourceGraph = null;
 
@@ -17,7 +17,10 @@ export function initializeResourcesGraph(resourcesInterop) {
 
 export function updateResourcesGraph(resources) {
     if (resourceGraph) {
-        resourceGraph.updateResources(resources);
+        var existingResources = resourceGraph.resources;
+
+        resourceGraph.updateResources(existingResources, resources);
+        resourceGraph.updateNodeContent(existingResources, resources);
     }
 }
 
@@ -29,6 +32,7 @@ export function updateResourcesGraphSelected(resourceName) {
 
 class ResourceGraph {
     constructor(resourcesInterop) {
+        this.resources = [];
         this.resourcesInterop = resourcesInterop;
 
         this.nodes = [];
@@ -124,18 +128,126 @@ class ResourceGraph {
         //this.simulation.alpha(0.01).restart();
     }
 
-    updateResources(resources) {
-        // If the resources are the same then quickly exit.
-        // TODO: Replace JSON.stringify with lower-level comparison.
-        if (this.resources && JSON.stringify(resources) === JSON.stringify(this.resources)) {
-            return;
+    resourceEqual(r1, r2, contentChanges) {
+        if (r1.name !== r2.name) {
+            return false;
+        }
+        if (r1.displayName !== r2.displayName) {
+            return false;
+        }
+        if (!this.iconEqual(r1.resourceIcon, r2.resourceIcon)) {
+            return false;
+        }
+        if (r1.referencedNames.length !== r2.referencedNames.length) {
+            return false;
+        }
+        for (var i = 0; i < r1.referencedNames.length; i++) {
+            if (r1.referencedNames[i] !== r2.referencedNames[i]) {
+                return false;
+            }
         }
 
-        this.resources = resources;
+        if (contentChanges) {
+            if (r1.endpointUrl !== r2.endpointUrl) {
+                return false;
+            }
+            if (r1.endpointText !== r2.endpointText) {
+                return false;
+            }
+            if (!this.iconEqual(r1.stateIcon, r2.stateIcon)) {
+                return false;
+            }
+        }
 
-        this.nodes = resources
-            .map((resource, index) => {
-                return {
+        return true;
+    }
+
+    iconEqual(i1, i2) {
+        if (i1.path !== i2.path) {
+            return false;
+        }
+        if (i1.color !== i2.color) {
+            return false;
+        }
+        if (i1.tooltip !== i2.tooltip) {
+            return false;
+        }
+
+        return true;
+    }
+
+    resourcesChanged(existingResource, newResources) {
+        if (!existingResource || newResources.length != existingResource.length) {
+            return true;
+        }
+
+        for (var i = 0; i < newResources.length; i++) {
+            if (!this.resourceEqual(newResources[i], existingResource[i], false)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    updateNodeContent(existingResources, newResources) {
+        for (var i = 0; i < newResources.length; i++) {
+            var resource = newResources[i];
+            var existingResource = existingResources.find(r => r.name === resource.name);
+
+            if (!existingResource || !this.resourceEqual(resource, existingResource, true)) {
+
+                let match = this.nodeElementsG
+                    .selectAll(".resource-group")
+                    .filter(function (d) {
+                        return d.id == resource.name;
+                    });
+
+                match
+                    .select(".resource-endpoint")
+                    .text((node) => {
+                        return node.endpointText || 'No endpoints';
+                    });
+
+                match
+                    .select(".resource-endpoint")
+                    .text((node) => {
+                        return node.endpointText || 'No endpoints';
+                    });
+
+                //if (match) {
+                //    console.log('match: ' + match.id);
+                //}
+            }
+        }
+    }
+
+    updateNodes(newResources) {
+        const existingNodes = this.nodes || []; // Ensure nodes is initialized
+        const updatedNodes = [];
+
+        newResources.forEach(resource => {
+            const existingNode = existingNodes.find(node => node.id === resource.name);
+
+            if (existingNode) {
+                // Update existing node without replacing it
+                updatedNodes.push({
+                    ...existingNode,
+                    label: resource.displayName,
+                    endpointUrl: resource.endpointUrl,
+                    endpointText: resource.endpointText,
+                    resourceIcon: {
+                        ...existingNode.resourceIcon,
+                        ...resource.resourceIcon
+                    },
+                    stateIcon: {
+                        ...existingNode.stateIcon,
+                        ...resource.stateIcon
+                    }
+                });
+            } else {
+                // Add new resource
+                updatedNodes.push({
                     id: resource.name,
                     label: resource.displayName,
                     endpointUrl: resource.endpointUrl,
@@ -150,19 +262,41 @@ class ResourceGraph {
                         color: resource.stateIcon.color,
                         tooltip: resource.stateIcon.tooltip
                     }
-                };
-            });
+                });
+            }
+        });
+
+        // Identify nodes to keep (not in newResources) and merge them
+        const newResourceIds = newResources.map(resource => resource.name);
+        const nodesToKeep = existingNodes.filter(node => !newResourceIds.includes(node.id));
+
+        // Combine updated nodes with remaining ones
+        this.nodes = [...nodesToKeep, ...updatedNodes];
+    }
+
+    updateResources(existingResource, newResources) {
+
+        this.resources = newResources;
+
+        this.updateNodes(newResources);
 
         this.links = [];
-        for (var i = 0; i < resources.length; i++) {
-            var resource = resources[i];
+        for (var i = 0; i < newResources.length; i++) {
+            var resource = newResources[i];
 
             var resourceLinks = resource.referencedNames.map((referencedName, index) => {
-                return { target: referencedName, source: resource.name, strength: 0.7 };
+                return {
+                    id: `${referencedName}-${resource.name}`,
+                    target: referencedName,
+                    source: resource.name,
+                    strength: 0.7
+                };
             });
 
             this.links.push(...resourceLinks);
         }
+
+        var hasStructureChanged = this.resourcesChanged(existingResource, newResources);
 
         // Update nodes
         this.nodeElements = this.nodeElementsG
@@ -235,6 +369,7 @@ class ResourceGraph {
             .append("path")
             .attr("d", n => n.stateIcon.path)
             .attr("fill", n => n.stateIcon.color)
+            .attr("class", "resource-status-path")
             .append("title")
             .text(n => n.stateIcon.tooltip);
 
@@ -261,7 +396,7 @@ class ResourceGraph {
         // Update links
         this.linkElements = this.linkElementsG
             .selectAll("line")
-            .data(this.links, function (d) { return d.source.id + "-" + d.target.id; });
+            .data(this.links, (d) => { return d.id; });
 
         this.linkElements
             .exit()
@@ -284,7 +419,12 @@ class ResourceGraph {
             .on('tick', this.onTick);
 
         this.simulation.force("link").links(this.links);
-        this.simulation.alpha(1).restart();
+        if (hasStructureChanged) {
+            this.simulation.alpha(1).restart();
+        }
+        else {
+            this.simulation.restart();
+        }
    }
 
     onTick = () => {

@@ -422,26 +422,6 @@ public static class ResourceBuilderExtensions
         return builder;
     }
 
-#pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
-#pragma warning disable RS0016 // Add public types and members to the declared API
-    public static void AddReferenceEnvVar<TDestination>(IResourceBuilder<TDestination> builder, string resourceName) where TDestination : IResourceWithEnvironment
-#pragma warning restore RS0016 // Add public types and members to the declared API
-#pragma warning restore CS1591 // Missing XML comment for publicly visible type or member
-    {
-        builder.WithEnvironment(c =>
-        {
-            if (c.EnvironmentVariables.TryGetValue("hack_resource_references", out var value))
-            {
-                var s = (string)value;
-                c.EnvironmentVariables["hack_resource_references"] = s + $",{resourceName}";
-            }
-            else
-            {
-                c.EnvironmentVariables["hack_resource_references"] = resourceName;
-            }
-        });
-    }
-
     private static void ApplyEndpoints<T>(this IResourceBuilder<T> builder, IResourceWithEndpoints resourceWithEndpoints, string? endpointName = null)
         where T : IResourceWithEnvironment
     {

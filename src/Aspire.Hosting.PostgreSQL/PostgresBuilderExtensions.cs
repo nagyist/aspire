@@ -120,8 +120,6 @@ public static class PostgresBuilderExtensions
         var postgresDatabase = new PostgresDatabaseResource(name, databaseName, builder.Resource);
         var databaseBuilder = builder.ApplicationBuilder.AddResource(postgresDatabase);
 
-        ResourceBuilderExtensions.AddReferenceEnvVar(builder, databaseName);
-
         return databaseBuilder;
     }
 
@@ -209,7 +207,6 @@ public static class PostgresBuilderExtensions
             });
 
             configureContainer?.Invoke(pgAdminContainerBuilder);
-            ResourceBuilderExtensions.AddReferenceEnvVar(pgAdminContainerBuilder, builder.Resource.Name);
 
             pgAdminContainerBuilder.WithRelationship(builder.Resource, "PgAdmin");
 
