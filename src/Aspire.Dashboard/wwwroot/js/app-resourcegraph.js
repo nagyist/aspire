@@ -17,10 +17,7 @@ export function initializeResourcesGraph(resourcesInterop) {
 
 export function updateResourcesGraph(resources) {
     if (resourceGraph) {
-        var existingResources = resourceGraph.resources;
-
-        resourceGraph.updateResources(existingResources, resources);
-        resourceGraph.updateNodeContent(existingResources, resources);
+        resourceGraph.updateResources(resources);
     }
 }
 
@@ -122,13 +119,9 @@ class ResourceGraph {
     switchTo(resourceName) {
         this.selectedNode = this.nodes.find(node => node.id === resourceName);
         this.updateNodeHighlights(null);
-
-        // For some reason the arrow markers on lines disappear when switching back to
-        // Update the simulation
-        //this.simulation.alpha(0.01).restart();
     }
 
-    resourceEqual(r1, r2, contentChanges) {
+    resourceEqual(r1, r2) {
         if (r1.name !== r2.name) {
             return false;
         }
@@ -143,18 +136,6 @@ class ResourceGraph {
         }
         for (var i = 0; i < r1.referencedNames.length; i++) {
             if (r1.referencedNames[i] !== r2.referencedNames[i]) {
-                return false;
-            }
-        }
-
-        if (contentChanges) {
-            if (r1.endpointUrl !== r2.endpointUrl) {
-                return false;
-            }
-            if (r1.endpointText !== r2.endpointText) {
-                return false;
-            }
-            if (!this.iconEqual(r1.stateIcon, r2.stateIcon)) {
                 return false;
             }
         }
@@ -190,38 +171,6 @@ class ResourceGraph {
         return false;
     }
 
-    updateNodeContent(existingResources, newResources) {
-        for (var i = 0; i < newResources.length; i++) {
-            var resource = newResources[i];
-            var existingResource = existingResources.find(r => r.name === resource.name);
-
-            if (!existingResource || !this.resourceEqual(resource, existingResource, true)) {
-
-                let match = this.nodeElementsG
-                    .selectAll(".resource-group")
-                    .filter(function (d) {
-                        return d.id == resource.name;
-                    });
-
-                match
-                    .select(".resource-endpoint")
-                    .text((node) => {
-                        return node.endpointText || 'No endpoints';
-                    });
-
-                match
-                    .select(".resource-endpoint")
-                    .text((node) => {
-                        return node.endpointText || 'No endpoints';
-                    });
-
-                //if (match) {
-                //    console.log('match: ' + match.id);
-                //}
-            }
-        }
-    }
-
     updateNodes(newResources) {
         const existingNodes = this.nodes || []; // Ensure nodes is initialized
         const updatedNodes = [];
@@ -236,14 +185,8 @@ class ResourceGraph {
                     label: resource.displayName,
                     endpointUrl: resource.endpointUrl,
                     endpointText: resource.endpointText,
-                    resourceIcon: {
-                        ...existingNode.resourceIcon,
-                        ...resource.resourceIcon
-                    },
-                    stateIcon: {
-                        ...existingNode.stateIcon,
-                        ...resource.stateIcon
-                    }
+                    resourceIcon: createIcon(resource.resourceIcon),
+                    stateIcon: createIcon(resource.stateIcon)
                 });
             } else {
                 // Add new resource
@@ -252,16 +195,8 @@ class ResourceGraph {
                     label: resource.displayName,
                     endpointUrl: resource.endpointUrl,
                     endpointText: resource.endpointText,
-                    resourceIcon: {
-                        path: resource.resourceIcon.path,
-                        color: resource.resourceIcon.color,
-                        tooltip: resource.resourceIcon.tooltip
-                    },
-                    stateIcon: {
-                        path: resource.stateIcon.path,
-                        color: resource.stateIcon.color,
-                        tooltip: resource.stateIcon.tooltip
-                    }
+                    resourceIcon: createIcon(resource.resourceIcon),
+                    stateIcon: createIcon(resource.stateIcon)
                 });
             }
         });
@@ -272,9 +207,19 @@ class ResourceGraph {
 
         // Combine updated nodes with remaining ones
         this.nodes = [...nodesToKeep, ...updatedNodes];
+
+        function createIcon(resourceIcon) {
+            return {
+                path: resourceIcon.path,
+                color: resourceIcon.color,
+                tooltip: resourceIcon.tooltip
+            };
+        }
     }
 
-    updateResources(existingResource, newResources) {
+    updateResources(newResources) {
+        // Check if the overall structure of the graph has changed. i.e. nodes or links have been added or removed.
+        var hasStructureChanged = this.resourcesChanged(this.resources, newResources);
 
         this.resources = newResources;
 
@@ -295,8 +240,6 @@ class ResourceGraph {
 
             this.links.push(...resourceLinks);
         }
-
-        var hasStructureChanged = this.resourcesChanged(existingResource, newResources);
 
         // Update nodes
         this.nodeElements = this.nodeElementsG
@@ -345,9 +288,6 @@ class ResourceGraph {
 
         newNodesContainer
             .append("text")
-            .text(function (node) {
-                return node.endpointText || 'No endpoints';
-            })
             .attr("class", "resource-endpoint")
             .attr("font-size", 11)
             .attr("text-anchor", "middle")
@@ -363,15 +303,11 @@ class ResourceGraph {
             .attr("cy", 8)
             .attr("cx", 8)
             .attr("class", "resource-status-circle")
-            .append("title")
-            .text(n => n.stateIcon.tooltip);
+            .append("title");
         statusGroup
             .append("path")
-            .attr("d", n => n.stateIcon.path)
-            .attr("fill", n => n.stateIcon.color)
             .attr("class", "resource-status-path")
-            .append("title")
-            .text(n => n.stateIcon.tooltip);
+            .append("title");
 
         newNodesContainer
             .append("text")
@@ -392,6 +328,26 @@ class ResourceGraph {
             .attr("opacity", 1);
 
         this.nodeElements = newNodes.merge(this.nodeElements);
+
+        // Set resource values that change.
+        this.nodeElementsG
+            .selectAll(".resource-group")
+            .select(".resource-endpoint")
+            .text((node) => {
+                return node.endpointText || 'No endpoints';
+            });
+        this.nodeElementsG
+            .selectAll(".resource-group")
+            .select(".resource-status-circle")
+            .select("title")
+            .text(n => n.stateIcon.tooltip);
+        this.nodeElementsG
+            .selectAll(".resource-group")
+            .select(".resource-status-path")
+            .attr("d", n => n.stateIcon.path)
+            .attr("fill", n => n.stateIcon.color)
+            .select("title")
+            .text(n => n.stateIcon.tooltip);
 
         // Update links
         this.linkElements = this.linkElementsG
