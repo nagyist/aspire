@@ -13,9 +13,12 @@ Aspire.Azure.AI.OpenAI.AzureOpenAISettings.Endpoint.get -> System.Uri?
 Aspire.Azure.AI.OpenAI.AzureOpenAISettings.Endpoint.set -> void
 Aspire.Azure.AI.OpenAI.AzureOpenAISettings.Key.get -> string?
 Aspire.Azure.AI.OpenAI.AzureOpenAISettings.Key.set -> void
+Microsoft.Extensions.Hosting.AspireAzureOpenAIClientBuilderChatClientExtensions
 Microsoft.Extensions.Hosting.AspireAzureOpenAIExtensions
 Microsoft.Extensions.Hosting.AspireConfigurableOpenAIExtensions
 override Aspire.Azure.AI.OpenAI.AspireAzureOpenAIClientBuilder.ConfigurationSectionName.get -> string!
+static Microsoft.Extensions.Hosting.AspireAzureOpenAIClientBuilderChatClientExtensions.AddChatClient(this Aspire.Azure.AI.OpenAI.AspireAzureOpenAIClientBuilder! builder, string? deploymentName = null) -> Aspire.Azure.AI.OpenAI.AspireAzureOpenAIClientBuilder!
+static Microsoft.Extensions.Hosting.AspireAzureOpenAIClientBuilderChatClientExtensions.AddKeyedChatClient(this Aspire.Azure.AI.OpenAI.AspireAzureOpenAIClientBuilder! builder, string! serviceKey) -> Aspire.Azure.AI.OpenAI.AspireAzureOpenAIClientBuilder!
 static Microsoft.Extensions.Hosting.AspireAzureOpenAIExtensions.AddAzureOpenAIClient(this Microsoft.Extensions.Hosting.IHostApplicationBuilder! builder, string! connectionName, System.Action<Aspire.Azure.AI.OpenAI.AzureOpenAISettings!>? configureSettings = null, System.Action<Azure.Core.Extensions.IAzureClientBuilder<Azure.AI.OpenAI.AzureOpenAIClient!, Azure.AI.OpenAI.AzureOpenAIClientOptions!>!>? configureClientBuilder = null) -> Aspire.Azure.AI.OpenAI.AspireAzureOpenAIClientBuilder!
 static Microsoft.Extensions.Hosting.AspireAzureOpenAIExtensions.AddKeyedAzureOpenAIClient(this Microsoft.Extensions.Hosting.IHostApplicationBuilder! builder, string! name, System.Action<Aspire.Azure.AI.OpenAI.AzureOpenAISettings!>? configureSettings = null, System.Action<Azure.Core.Extensions.IAzureClientBuilder<Azure.AI.OpenAI.AzureOpenAIClient!, Azure.AI.OpenAI.AzureOpenAIClientOptions!>!>? configureClientBuilder = null) -> Aspire.Azure.AI.OpenAI.AspireAzureOpenAIClientBuilder!
 static Microsoft.Extensions.Hosting.AspireConfigurableOpenAIExtensions.AddKeyedOpenAIClientFromConfiguration(this Microsoft.Extensions.Hosting.IHostApplicationBuilder! builder, string! name) -> void

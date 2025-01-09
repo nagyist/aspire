@@ -3,6 +3,8 @@
 
 using Aspire.OpenAI;
 using Azure.AI.OpenAI;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 
 namespace Aspire.Azure.AI.OpenAI;
@@ -26,4 +28,15 @@ public class AspireAzureOpenAIClientBuilder : AspireOpenAIClientBuilder
 
     /// <inheritdoc />
     public override string ConfigurationSectionName => AspireAzureOpenAIExtensions.DefaultConfigSectionName;
+
+    internal DeploymentModelSettings GetDeploymentModelSettings()
+    {
+        var configurationSectionName = $"{AspireAzureOpenAIExtensions.DefaultConfigSectionName}:{ConnectionName}";
+        var configSection = HostBuilder.Configuration.GetSection(configurationSectionName);
+
+        var settings = new DeploymentModelSettings();
+        configSection.Bind(settings);
+
+        return settings;
+    }
 }
