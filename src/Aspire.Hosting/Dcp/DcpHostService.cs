@@ -262,7 +262,7 @@ internal sealed class DcpHostService : IHostedLifecycleService, IAsyncDisposable
     private async Task LogSocketOutputAsync(Socket socket, CancellationToken cancellationToken)
     {
         using var stream = new NetworkStream(socket, ownsSocket: true);
-        using var _ = cancellationToken.Register(s => ((NetworkStream)s!).Close(), stream);
+        using var ctsRegistration = cancellationToken.Register(s => ((NetworkStream)s!).Close(), stream);
         var reader = PipeReader.Create(stream);
 
         // Logger cache to avoid creating a new string per log line, for a few categories
@@ -270,56 +270,36 @@ internal sealed class DcpHostService : IHostedLifecycleService, IAsyncDisposable
 
         (ILogger, LogLevel, string message) GetLogInfo(ReadOnlySpan<byte> line)
         {
-            // The log format is
-            // <date>\t<level>\t<category>\t<log message>
-            // e.g. 2023-09-19T20:40:50.509-0700      info    dcpctrl.ServiceReconciler       service /apigateway is now in state Ready       {"ServiceName": {"name":"apigateway"}}
-
-            var tab = line.IndexOf((byte)'\t');
-            var date = line[..tab];
-            line = line[(tab + 1)..];
-            tab = line.IndexOf((byte)'\t');
-            var level = line[..tab];
-            line = line[(tab + 1)..];
-            tab = line.IndexOf((byte)'\t');
-            var category = line[..tab];
-            line = line[(tab + 1)..];
-            var message = line;
-
-            var logLevel = LogLevel.Information;
-
-            if (level.SequenceEqual("info"u8))
+            if (!TryParseLogLine(line, out var category, out var message, out var logLevel))
             {
-                logLevel = LogLevel.Information;
-            }
-            else if (level.SequenceEqual("error"u8))
-            {
-                logLevel = LogLevel.Error;
-            }
-            else if (level.SequenceEqual("warning"u8))
-            {
-                logLevel = LogLevel.Warning;
-            }
-            else if (level.SequenceEqual("debug"u8))
-            {
-                logLevel = LogLevel.Debug;
-            }
-            else if (level.SequenceEqual("trace"u8))
-            {
-                logLevel = LogLevel.Trace;
+                // If the log line could not be parsed, log the line as an error.
+                return (_logger, LogLevel.Error, $"Unable to parse log line '{Encoding.UTF8.GetString(line)}'.");
             }
 
-            var hash = new HashCode();
-            hash.AddBytes(category);
-            var hashValue = hash.ToHashCode();
-
-            if (!loggerCache.TryGetValue(hashValue, out var logger))
-            {
-                // loggerFactory.CreateLogger internally caches, but we may as well cache the logger as well as the string
-                // for the lifetime of this socket
-                loggerCache[hashValue] = logger = _loggerFactory.CreateLogger($"Aspire.Hosting.Dcp.{Encoding.UTF8.GetString(category)}");
-            }
+            var logger = GetLogger(loggerCache, category);
 
             return (logger, logLevel, Encoding.UTF8.GetString(message));
+
+            ILogger GetLogger(Dictionary<int, ILogger> loggerCache, ReadOnlySpan<byte> category)
+            {
+                if (category.IsEmpty)
+                {
+                    category = "dcp"u8;
+                }
+
+                var hash = new HashCode();
+                hash.AddBytes(category);
+                var hashValue = hash.ToHashCode();
+
+                if (!loggerCache.TryGetValue(hashValue, out var logger))
+                {
+                    // loggerFactory.CreateLogger internally caches, but we may as well cache the logger as well as the string
+                    // for the lifetime of this socket
+                    loggerCache[hashValue] = logger = _loggerFactory.CreateLogger($"Aspire.Hosting.Dcp.{Encoding.UTF8.GetString(category)}");
+                }
+
+                return logger;
+            }
         }
 
         try
@@ -329,9 +309,16 @@ internal sealed class DcpHostService : IHostedLifecycleService, IAsyncDisposable
                 var seq = new SequenceReader<byte>(buffer);
                 while (seq.TryReadTo(out ReadOnlySpan<byte> line, (byte)'\n'))
                 {
-                    var (logger, logLevel, message) = GetLogInfo(line);
+                    try
+                    {
+                        var (logger, logLevel, message) = GetLogInfo(line);
 
-                    logger.Log(logLevel, 0, message, null, static (value, ex) => value);
+                        logger.Log(logLevel, 0, message, null, static (value, ex) => value);
+                    }
+                    catch (Exception exception)
+                    {
+                        _logger.LogError(exception, "Error parsing DCP log output.");
+                    }
                 }
 
                 position = seq.Position;
@@ -358,6 +345,71 @@ internal sealed class DcpHostService : IHostedLifecycleService, IAsyncDisposable
         finally
         {
             reader.Complete();
+        }
+
+        static bool TryParseLogLine(ReadOnlySpan<byte> line, out ReadOnlySpan<byte> category, out ReadOnlySpan<byte> message, out LogLevel logLevel)
+        {
+            // The log format is
+            // <date>\t<level>\t<category>\t<log message>
+            // e.g. 2023-09-19T20:40:50.509-0700      info    dcpctrl.ServiceReconciler       service /apigateway is now in state Ready       {"ServiceName": {"name":"apigateway"}}
+            category = [];
+            message = [];
+            logLevel = default;
+
+            var tab = line.IndexOf((byte)'\t');
+            if (tab < 0)
+            {
+                return false;
+            }
+
+            // Note that the date field is ignored, so parsing begins after the first tab.
+            line = line[(tab + 1)..];
+            tab = line.IndexOf((byte)'\t');
+            if (tab < 0)
+            {
+                return false;
+            }
+
+            var level = line[..tab];
+            line = line[(tab + 1)..];
+            tab = line.IndexOf((byte)'\t');
+
+            if (tab >= 0)
+            {
+                // Extract the optional 'category' field.
+                category = line[..tab];
+                line = line[(tab + 1)..];
+            }
+
+            message = line;
+
+            if (level.SequenceEqual("info"u8))
+            {
+                logLevel = LogLevel.Information;
+            }
+            else if (level.SequenceEqual("error"u8))
+            {
+                logLevel = LogLevel.Error;
+            }
+            else if (level.SequenceEqual("warning"u8))
+            {
+                logLevel = LogLevel.Warning;
+            }
+            else if (level.SequenceEqual("debug"u8))
+            {
+                logLevel = LogLevel.Debug;
+            }
+            else if (level.SequenceEqual("trace"u8))
+            {
+                logLevel = LogLevel.Trace;
+            }
+            else
+            {
+                // An unknown category indicates a potential formatting error.
+                return false;
+            }
+
+            return true;
         }
     }
 
