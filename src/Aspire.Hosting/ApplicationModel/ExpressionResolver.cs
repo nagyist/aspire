@@ -13,6 +13,8 @@ internal class ExpressionResolver(string containerHostName, CancellationToken ca
         public bool HasPort { get; set; }
     }
 
+    public bool ValueHasSecrets { get; set; }
+
     // For each endpoint, keep track of whether host and port are in use
     // The key is the unique name of the endpoint, which is the resource name and endpoint name
     readonly Dictionary<string, HostAndPortPresence> _endpointUsage = [];
@@ -144,9 +146,17 @@ internal class ExpressionResolver(string containerHostName, CancellationToken ca
             ReferenceExpression ex => await EvalExpressionAsync(ex).ConfigureAwait(false),
             EndpointReference endpointReference => await EvalEndpointAsync(endpointReference, EndpointProperty.Url).ConfigureAwait(false),
             EndpointReferenceExpression ep => await EvalEndpointAsync(ep.Endpoint, ep.Property).ConfigureAwait(false),
+            ParameterResource p => await ResolveParameter(p).ConfigureAwait(false),
             IValueProvider vp => await EvalValueProvider(vp).ConfigureAwait(false),
             _ => throw new NotImplementedException()
         };
+    }
+
+    ValueTask<string> ResolveParameter(ParameterResource p)
+    {
+        ValueHasSecrets |= p.Secret;
+
+        return new(p.Value);
     }
 
     static async ValueTask<string?> ResolveWithContainerSourceAsync(IValueProvider valueProvider, string containerHostName, CancellationToken cancellationToken)
