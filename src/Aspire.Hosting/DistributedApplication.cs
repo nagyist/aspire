@@ -2,11 +2,14 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Diagnostics;
+using System.Text;
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Dcp.Process;
 using Aspire.Hosting.Eventing;
 using Aspire.Hosting.Lifecycle;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace Aspire.Hosting;
 
@@ -57,7 +60,32 @@ public class DistributedApplication : IHost, IAsyncDisposable
     public DistributedApplication(IHost host)
     {
         ArgumentNullException.ThrowIfNull(host);
-
+        object logLock = new();
+        StringBuilder log = new();
+        void OnOutput(string? line)
+        {
+            lock (logLock)
+            {
+                log.AppendLine(line);
+            }
+        }
+        var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("docker-network-ls");
+        var dockerNetworkLsSpec = new ProcessSpec("docker")
+        {
+            Arguments = "network ls",
+            OnOutputData = OnOutput,
+            OnErrorData = OnOutput,
+            OnStop = exitCode =>
+            {
+                lock (logLock)
+                {
+                    var nets = log.ToString();
+                    Console.WriteLine($"docker network ls output: \n{nets}\n====");
+                    logger.LogInformation("docker network count {Count}: {DockerNetworks}", nets.Count(c => c == '\n'), nets);
+                }
+            }
+        };
+        _ = ProcessUtil.Run(dockerNetworkLsSpec);
         _host = host;
     }
 
