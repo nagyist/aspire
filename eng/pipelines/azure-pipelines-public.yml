@@ -95,69 +95,67 @@ stages:
 
       jobs:
 
-      - ${{ each testVariant in split(',_helix_tests', ',') }}:
-        - job: Windows${{ testVariant }}
+      - job: Windows_helix_tests
 
-          # timeout accounts for wait times for helix agents up to 30mins
-          timeoutInMinutes: 90
+        # timeout accounts for wait times for helix agents up to 30mins
+        timeoutInMinutes: 90
 
-          pool:
-            name: $(DncEngPublicBuildPool)
-            demands: ImageOverride -equals windows.vs2022preview.amd64.open
+        pool:
+          name: $(DncEngPublicBuildPool)
+          demands: ImageOverride -equals windows.vs2022preview.amd64.open
 
-          variables:
-            - name: _buildScript
-              value: $(Build.SourcesDirectory)/build.cmd -ci
+        variables:
+          - name: _buildScript
+            value: $(Build.SourcesDirectory)/build.cmd -ci
 
-          preSteps:
-            - checkout: self
-              fetchDepth: 1
-              clean: true
+        preSteps:
+          - checkout: self
+            fetchDepth: 1
+            clean: true
 
-          steps:
-            - template: /eng/pipelines/templates/BuildAndTest.yml
-              parameters:
-                runAsPublic: true
-                dotnetScript: $(Build.SourcesDirectory)/dotnet.cmd
-                buildScript: $(_buildScript)
-                buildConfig: $(_BuildConfig)
-                repoArtifactsPath: $(Build.Arcade.ArtifactsPath)
-                repoLogPath: $(Build.Arcade.LogsPath)
-                repoTestResultsPath: $(Build.Arcade.TestResultsPath)
-                isWindows: true
-                runHelixTests: ${{ contains(testVariant, 'helix') }}
+        steps:
+          - template: /eng/pipelines/templates/BuildAndTest.yml
+            parameters:
+              runAsPublic: true
+              dotnetScript: $(Build.SourcesDirectory)/dotnet.cmd
+              buildScript: $(_buildScript)
+              buildConfig: $(_BuildConfig)
+              repoArtifactsPath: $(Build.Arcade.ArtifactsPath)
+              repoLogPath: $(Build.Arcade.LogsPath)
+              repoTestResultsPath: $(Build.Arcade.TestResultsPath)
+              isWindows: true
+              runHelixTests: true
 
-      - ${{ each testVariant in split(',_helix_tests', ',') }}:
-        - job: Linux${{ testVariant }}
+      - job: Linux_helix_tests
 
-          # timeout accounts for wait times for helix agents up to 30mins
-          timeoutInMinutes: 90
+        # timeout accounts for wait times for helix agents up to 30mins
+        timeoutInMinutes: 90
 
-          pool:
-            name: $(DncEngPublicBuildPool)
-            demands: ImageOverride -equals build.ubuntu.2004.amd64.open
+        pool:
+          name: $(DncEngPublicBuildPool)
+          demands: ImageOverride -equals build.ubuntu.2004.amd64.open
 
-          variables:
-            - name: _buildScript
-              value: $(Build.SourcesDirectory)/build.sh --ci
+        variables:
+          - name: _buildScript
+            value: $(Build.SourcesDirectory)/build.sh --ci
 
-          preSteps:
-            - checkout: self
-              fetchDepth: 1
-              clean: true
+        preSteps:
+          - checkout: self
+            fetchDepth: 1
+            clean: true
 
-          steps:
-            - template: /eng/pipelines/templates/BuildAndTest.yml
-              parameters:
-                runAsPublic: true
-                dotnetScript: $(Build.SourcesDirectory)/dotnet.sh
-                buildScript: $(_buildScript)
-                buildConfig: $(_BuildConfig)
-                repoArtifactsPath: $(Build.Arcade.ArtifactsPath)
-                repoLogPath: $(Build.Arcade.LogsPath)
-                repoTestResultsPath: $(Build.Arcade.TestResultsPath)
-                isWindows: false
-                runHelixTests: ${{ contains(testVariant, 'helix') }}
+        steps:
+          - template: /eng/pipelines/templates/BuildAndTest.yml
+            parameters:
+              runAsPublic: true
+              dotnetScript: $(Build.SourcesDirectory)/dotnet.sh
+              buildScript: $(_buildScript)
+              buildConfig: $(_BuildConfig)
+              repoArtifactsPath: $(Build.Arcade.ArtifactsPath)
+              repoLogPath: $(Build.Arcade.LogsPath)
+              repoTestResultsPath: $(Build.Arcade.TestResultsPath)
+              isWindows: false
+              runHelixTests: true
 
 # ----------------------------------------------------------------
 # This stage performs quality gates checks
