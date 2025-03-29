@@ -1,6 +1,8 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+#pragma warning disable ASPIREPUBLISHERS001
+
 using System.Diagnostics;
 using System.Reflection;
 using System.Security.Cryptography;
@@ -293,11 +295,11 @@ public class DistributedApplicationBuilder : IDistributedApplicationBuilder
                     );
 
                     // Determine the resource service API key.
-                    if (_innerBuilder.Configuration[KnownConfigNames.DashboardResourceServiceClientApiKey] is not { Length: > 0 } apiKey)
-                    {
-                        // No API key was specified in configuration, so generate one.
-                        apiKey = TokenGenerator.GenerateToken();
-                    }
+                    var apiKey = _innerBuilder.Configuration.GetString(KnownConfigNames.DashboardResourceServiceClientApiKey,
+                                                                       KnownConfigNames.Legacy.DashboardResourceServiceClientApiKey, fallbackOnEmpty: true);
+
+                    // If no API key was specified in configuration, generate one.
+                    apiKey ??= TokenGenerator.GenerateToken();
 
                     _innerBuilder.Configuration.AddInMemoryCollection(
                         new Dictionary<string, string?>
@@ -442,7 +444,7 @@ public class DistributedApplicationBuilder : IDistributedApplicationBuilder
 
     private static bool IsDashboardUnsecured(IConfiguration configuration)
     {
-        return configuration.GetBool(KnownConfigNames.DashboardUnsecuredAllowAnonymous) ?? false;
+        return configuration.GetBool(KnownConfigNames.DashboardUnsecuredAllowAnonymous, KnownConfigNames.Legacy.DashboardUnsecuredAllowAnonymous) ?? false;
     }
 
     private void ConfigurePublishingOptions(DistributedApplicationOptions options)
